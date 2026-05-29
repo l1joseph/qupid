@@ -27,15 +27,16 @@ def match_one_to_many(
             parts = token.split("+-")
             if len(parts) != 2:
                 raise ValueError(
-                    f"Malformed tolerance token: {token!r}. "
-                    "Expected format 'category+-value'."
+                    f"Malformed tolerance token '{token}'. "
+                    "Expected format: 'category+-value' (e.g., 'age_years+-5')."
                 )
             cat, val_str = parts
             try:
                 val = float(val_str)
             except ValueError:
                 raise ValueError(
-                    f"Cannot parse tolerance value {val_str!r} in token {token!r}."
+                    f"Non-numeric tolerance value '{val_str}' in token '{token}'. "
+                    "Expected format: 'category+-value' (e.g., 'age_years+-5')."
                 )
             tolerance_map[cat] = val
 

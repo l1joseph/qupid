@@ -7,6 +7,8 @@ from qiime2 import Artifact, Metadata
 from qiime2.plugins import qupid
 from skbio import DistanceMatrix
 
+from qupid.q2._methods import match_one_to_many as raw_match_one_to_many
+
 
 @pytest.fixture(scope="module")
 def metadata():
@@ -47,23 +49,21 @@ def test_match_one_to_many(metadata):
         case_control_column="asd",
         categories=["sex", "age_years"],
         case_identifier=(
-            "Diagnosed by a medical professional (doctor, physician "
-            "assistant)"
+            "Diagnosed by a medical professional (doctor, physician " "assistant)"
         ),
-        tolerances=["age_years+-10"]
+        tolerances=["age_years+-10"],
     )
 
 
 def test_match_one_to_one(metadata):
-    cm_one_to_many, = qupid.methods.match_one_to_many(
+    (cm_one_to_many,) = qupid.methods.match_one_to_many(
         sample_metadata=metadata,
         case_control_column="asd",
         categories=["sex", "age_years"],
         case_identifier=(
-            "Diagnosed by a medical professional (doctor, physician "
-            "assistant)"
+            "Diagnosed by a medical professional (doctor, physician " "assistant)"
         ),
-        tolerances=["age_years+-10"]
+        tolerances=["age_years+-10"],
     )
 
     qupid.methods.match_one_to_one(
@@ -78,8 +78,7 @@ def test_shuffle(metadata):
         case_control_column="asd",
         categories=["sex", "age_years"],
         case_identifier=(
-            "Diagnosed by a medical professional (doctor, physician "
-            "assistant)"
+            "Diagnosed by a medical professional (doctor, physician " "assistant)"
         ),
         tolerances=["age_years+-10"],
         iterations=100,
@@ -92,17 +91,14 @@ def test_assessment_multivariate(metadata, distance_matrix):
         case_control_column="asd",
         categories=["sex", "age_years"],
         case_identifier=(
-            "Diagnosed by a medical professional (doctor, physician "
-            "assistant)"
+            "Diagnosed by a medical professional (doctor, physician " "assistant)"
         ),
         tolerances=["age_years+-10"],
         iterations=100,
     )
 
     qupid.visualizers.assess_matches_multivariate(
-        case_match_collection=coll,
-        distance_matrix=distance_matrix,
-        permutations=999
+        case_match_collection=coll, distance_matrix=distance_matrix, permutations=999
     )
 
 
@@ -112,8 +108,7 @@ def test_assessment_univariate(metadata, univariate):
         case_control_column="asd",
         categories=["sex", "age_years"],
         case_identifier=(
-            "Diagnosed by a medical professional (doctor, physician "
-            "assistant)"
+            "Diagnosed by a medical professional (doctor, physician " "assistant)"
         ),
         tolerances=["age_years+-10"],
         iterations=100,
@@ -123,3 +118,24 @@ def test_assessment_univariate(metadata, univariate):
         case_match_collection=coll,
         data=univariate.get_column("faith_pd"),
     )
+
+
+# A10 — malformed tolerance token raises a clear, informative ValueError
+@pytest.mark.parametrize(
+    "bad_token,match_fragment",
+    [
+        ("age_years10", "Malformed tolerance token"),  # no "+-" separator
+        ("age_years+-+-5", "Malformed tolerance token"),  # extra "+-"
+        ("age_years+-x", "Non-numeric tolerance value"),  # non-numeric value
+    ],
+)
+def test_malformed_tolerance(metadata, bad_token, match_fragment):
+    case_id = "Diagnosed by a medical professional (doctor, physician assistant)"
+    with pytest.raises(ValueError, match=match_fragment):
+        raw_match_one_to_many(
+            sample_metadata=metadata,
+            case_control_column="asd",
+            categories=["age_years"],
+            case_identifier=case_id,
+            tolerances=[bad_token],
+        )

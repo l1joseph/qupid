@@ -132,6 +132,9 @@ def match_by_multiple(
             if not matches[fidx]:
                 if on_failure == "raise":
                     raise exc.NoMoreControlsError()
+                if on_failure == "warn":
+                    warn(f"No matches found for {fidx}")
+                del matches[fidx]
 
     metadata = pd.concat([focus, background])
     return CaseMatchOneToMany(matches, metadata)

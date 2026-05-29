@@ -507,3 +507,56 @@ class TestCaseMatchCollection:
 
         assert len(set(case_means)) == 1
         assert len(set(ctrl_means)) == num_uniq_mean_sets
+
+
+class TestBugFixes:
+    # A2 — on_failure case-insensitivity
+    def test_on_failure_uppercase_raises(self):
+        s1 = pd.Series([0.0, 1.0])
+        s2 = pd.Series([10.0, 20.0])
+        s1.index = ["S0A", "S1A"]
+        s2.index = ["S0B", "S1B"]
+        with pytest.raises(mexc.NoMatchesError):
+            match_by_single(s1, s2, tolerance=0.5, on_failure="RAISE")
+
+    def test_on_failure_uppercase_warns(self):
+        s1 = pd.Series([0.0, 10.0])
+        s2 = pd.Series([10.0, 20.0])
+        s1.index = ["S0A", "S1A"]
+        s2.index = ["S0B", "S1B"]
+        with pytest.warns(UserWarning):
+            match_by_single(s1, s2, tolerance=0.5, on_failure="WARN")
+
+    # A4 — empty control set silently carried in match_by_multiple
+    def test_multiple_empty_intersection_continue(self):
+        focus = pd.DataFrame({"cat_1": ["A"], "cat_2": ["X"]}, index=["S0A"])
+        bg = pd.DataFrame(
+            {"cat_1": ["A", "B"], "cat_2": ["Y", "X"]}, index=["S0B", "S1B"]
+        )
+        # cat_1 matches S0A→{S0B}; cat_2 matches S0A→{S1B}; intersection={}
+        match = match_by_multiple(focus, bg, ["cat_1", "cat_2"], on_failure="continue")
+        assert match.case_control_map == {}
+
+    def test_multiple_empty_intersection_warn(self):
+        focus = pd.DataFrame({"cat_1": ["A"], "cat_2": ["X"]}, index=["S0A"])
+        bg = pd.DataFrame(
+            {"cat_1": ["A", "B"], "cat_2": ["Y", "X"]}, index=["S0B", "S1B"]
+        )
+        with pytest.warns(UserWarning, match="S0A"):
+            match = match_by_multiple(focus, bg, ["cat_1", "cat_2"], on_failure="warn")
+        assert match.case_control_map == {}
+
+    # A5 — controls property on empty CaseMatchOneToMany
+    def test_controls_empty_map(self):
+        cm = mm.CaseMatchOneToMany({})
+        assert cm.controls == set()
+        assert cm.cases == set()
+
+    # A6 — comparison operators use sorted (case, control) pairs
+    def test_comparison_includes_case_keys(self):
+        cm1 = mm.CaseMatchOneToOne({"S0A": {"S1B"}, "S1A": {"S2B"}})
+        cm2 = mm.CaseMatchOneToOne({"S0A": {"S2B"}, "S1A": {"S1B"}})
+        assert cm1 != cm2
+        assert cm1 < cm2  # ("S0A","S1B") < ("S0A","S2B") lexicographically
+        assert cm2 > cm1
+        assert sorted([cm2, cm1]) == sorted([cm1, cm2])
