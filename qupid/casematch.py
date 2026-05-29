@@ -270,6 +270,15 @@ class CaseMatchCollection:
     def to_dataframe(self) -> pd.DataFrame:
         """Convert to DataFrame.
 
+        When all matchings share the same set of cases (i.e.,
+        ``create_matched_pairs`` was run with ``strict=True``), every cell is
+        populated and the result is a complete (cases × iterations) DataFrame.
+
+        When ``strict=False`` is used, some matchings may cover fewer cases
+        than others. ``pd.concat`` unions the indices and fills the gaps with
+        ``NaN``, and a ``UserWarning`` naming the affected cases is emitted.
+        Use ``strict=True`` (the default) to guarantee NaN-free output.
+
         :returns: DataFrame where index is cases and each column represents a
             discrete CaseMatchOneToOne instance
         :rtype: pd.DataFrame
