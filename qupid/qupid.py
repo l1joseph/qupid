@@ -61,6 +61,8 @@ def match_by_single(
         if tolerance is None:
             warn("No tolerance was provided, using 1e-08.")
             tolerance = 1e-08
+        elif tolerance < 0:
+            raise ValueError(f"Tolerance must be non-negative, got {tolerance}.")
 
         matcher = partial(util._match_continuous, tolerance=tolerance)
 
@@ -104,13 +106,20 @@ def match_by_multiple(
         Categories not represented default to 1e-08
     :type tolerance_map: dict[str, float]
 
-    :param on_failure: Whether to 'raise' or 'ignore' sample for which a match
-        cannot be found, defaults to 'raise'
+    :param on_failure: Whether to 'raise', 'warn', or 'continue' when no
+        controls remain for a focus sample, defaults to 'raise'
     :type on_failure: str
 
     :returns: Matched control samples
     :rtype: qupid.CaseMatchOneToMany
     """
+    on_failure = on_failure.lower()
+    if on_failure not in VALID_ON_FAILURE_OPTS:
+        raise ValueError(
+            "Invalid argument for 'on_failure', must be one of "
+            f"{VALID_ON_FAILURE_OPTS}"
+        )
+
     if not util._are_categories_subset(categories, focus):
         raise exc.MissingCategoriesError(categories, "focus", focus)
 
@@ -124,17 +133,28 @@ def match_by_multiple(
 
     for cat in categories:
         tol = tolerance_map.get(cat)
+        if not matches:
+            break
+        surviving_focus = focus[cat].loc[list(matches.keys())]
         observed = match_by_single(
-            focus[cat], background[cat], tol, on_failure
+            surviving_focus, background[cat], tol, on_failure
         ).case_control_map
         for fidx, fhits in observed.items():
-            # Reduce the matches with successive categories
+            if fidx not in matches:
+                continue  # belt-and-suspenders
+            if not fhits:
+                # match_by_single already warned; drop case silently here
+                del matches[fidx]
+                continue
             matches[fidx] = matches[fidx] & fhits
             if not matches[fidx]:
                 if on_failure == "raise":
                     raise exc.NoMoreControlsError()
-                if on_failure == "warn":
-                    warn(f"No matches found for {fidx}")
+                elif on_failure == "warn":
+                    warn(
+                        f"No controls remaining for {fidx} after applying"
+                        f" '{cat}', dropping case."
+                    )
                 del matches[fidx]
 
     metadata = pd.concat([focus, background])

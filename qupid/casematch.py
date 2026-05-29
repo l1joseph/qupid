@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from functools import total_ordering
 import json
 from typing import Callable, Iterator
 from warnings import warn
@@ -141,10 +142,12 @@ class CaseMatchOneToMany(_BaseCaseMatch):
         :returns: Collection of unique CaseMatchOneToOne objects
         :rtype: qupid.CaseMatchCollection
         """
+        if iterations < 1:
+            raise ValueError(f"iterations must be >= 1, got {iterations}")
+
         if parallel_args is None:
             parallel_args = dict()
 
-        all_matches = set()
         G = nx.Graph(self.case_control_map)
 
         # Need to account for parallelization with random seed
@@ -196,6 +199,7 @@ class CaseMatchOneToMany(_BaseCaseMatch):
         return CaseMatchOneToOne(M, self.metadata)
 
 
+@total_ordering
 class CaseMatchOneToOne(_BaseCaseMatch):
     def __init__(
         self,
@@ -222,6 +226,8 @@ class CaseMatchOneToOne(_BaseCaseMatch):
         return cls(cm)
 
     def to_series(self) -> pd.Series:
+        if not self.case_control_map:
+            return pd.Series(dtype=object)
         match_tuples = map(
             lambda y: (y[0], list(y[1])[0]), self.case_control_map.items()
         )  # (case, control)
@@ -271,6 +277,14 @@ class CaseMatchCollection:
         match_series = [x.to_series() for x in self.case_matches]
         df = pd.concat(match_series, axis=1)
         df.index.name = "case_id"
+        if df.isna().any().any():
+            affected = df.index[df.isna().any(axis=1)].tolist()
+            warn(
+                "to_dataframe() produced NaN values because partial matchings "
+                f"(strict=False) have inconsistent case sets. "
+                f"Affected cases: {affected}. Use strict=True to avoid NaN.",
+                UserWarning,
+            )
         return df
 
     @classmethod

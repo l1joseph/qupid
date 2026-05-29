@@ -38,6 +38,10 @@ def match_one_to_many(
                     f"Non-numeric tolerance value '{val_str}' in token '{token}'. "
                     "Expected format: 'category+-value' (e.g., 'age_years+-5')."
                 )
+            if val < 0:
+                raise ValueError(
+                    f"Tolerance must be non-negative, got {val} in token '{token}'."
+                )
             tolerance_map[cat] = val
 
     cm_one_to_many = match_by_multiple(

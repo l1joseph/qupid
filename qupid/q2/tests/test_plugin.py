@@ -127,6 +127,7 @@ def test_assessment_univariate(metadata, univariate):
         ("age_years10", "Malformed tolerance token"),  # no "+-" separator
         ("age_years+-+-5", "Malformed tolerance token"),  # extra "+-"
         ("age_years+-x", "Non-numeric tolerance value"),  # non-numeric value
+        ("age_years+--5", "non-negative"),  # F5: negative tolerance
     ],
 )
 def test_malformed_tolerance(metadata, bad_token, match_fragment):

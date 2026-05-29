@@ -1,10 +1,26 @@
+import typing
 from functools import wraps
 from inspect import signature
 
 
 def _resolve_annotation(annotation, func_globals):
     if isinstance(annotation, str):
-        annotation = eval(annotation, func_globals)
+        try:
+            annotation = eval(annotation, func_globals)
+        except TypeError as e:
+            raise TypeError(
+                f"Cannot resolve annotation {annotation!r}: {e}. "
+                "Union-type parameters (X | Y) require Python >= 3.10."
+            ) from e
+    if typing.get_origin(annotation) is typing.Union:
+        return typing.get_args(annotation)
+    try:
+        import types as _types
+
+        if isinstance(annotation, _types.UnionType):
+            return typing.get_args(annotation)
+    except AttributeError:
+        pass  # Python < 3.10 has no types.UnionType
     return annotation
 
 
