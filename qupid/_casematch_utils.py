@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 import json
-from typing import Dict, Sequence, TypeVar
+from typing import Sequence, TypeVar
 
 import numpy as np
 import pandas as pd
@@ -83,7 +85,7 @@ def _match_discrete(
     return np.array(focus_value == background_values)
 
 
-def _load(path: str) -> Dict[str, set]:
+def _load(path: str) -> dict[str, set]:
     """Load mapping file from JSON as dict.
 
     :param path: Location of filepath

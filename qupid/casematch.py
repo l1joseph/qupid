@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 import json
-from typing import Dict, Set, Union, List, Callable, Iterator
+from typing import Callable, Iterator
 from warnings import warn
 
 from joblib import Parallel, delayed
@@ -18,8 +20,8 @@ class _BaseCaseMatch(ABC):
 
     def __init__(
         self,
-        case_control_map: Dict[str, set],
-        metadata: Union[pd.Series, pd.DataFrame] = None,
+        case_control_map: dict[str, set],
+        metadata: pd.Series | pd.DataFrame = None,
     ):
         """Base class storing case-control data & metadata.
 
@@ -35,12 +37,12 @@ class _BaseCaseMatch(ABC):
         self.metadata = metadata
 
     @property
-    def cases(self) -> Set[str]:
+    def cases(self) -> set[str]:
         """Get names of cases."""
         return set(self.case_control_map.keys())
 
     @property
-    def controls(self) -> Set[str]:
+    def controls(self) -> set[str]:
         """Get names of all controls."""
         ccm = self.case_control_map
         return set().union(*ccm.values())
@@ -83,8 +85,8 @@ class _BaseCaseMatch(ABC):
 class CaseMatchOneToMany(_BaseCaseMatch):
     def __init__(
         self,
-        case_control_map: Dict[str, set],
-        metadata: Union[pd.Series, pd.DataFrame] = None,
+        case_control_map: dict[str, set],
+        metadata: pd.Series | pd.DataFrame = None,
     ):
         """Case match object for mapping one case to multiple controls.
 
@@ -97,11 +99,10 @@ class CaseMatchOneToMany(_BaseCaseMatch):
         super().__init__(case_control_map, metadata)
 
     @classmethod
-    def load(cls, path: str) -> "CaseMatchOneToMany":
+    def load(cls, path: str) -> CaseMatchOneToMany:
         cm = util._load(path)
         return cls(cm)
 
-    # https://www.python.org/dev/peps/pep-0484/#forward-references
     def create_matched_pairs(
         self,
         iterations: int = 10,
@@ -109,7 +110,7 @@ class CaseMatchOneToMany(_BaseCaseMatch):
         seed: int = None,
         n_jobs: int = 1,
         parallel_args: dict = None,
-    ) -> List["CaseMatchOneToOne"]:
+    ) -> list[CaseMatchOneToOne]:
         """Create multiple matched pairs of cases to controls.
 
         NOTE: Can probably improve algorithm with "best" match from tolerance
@@ -198,8 +199,8 @@ class CaseMatchOneToMany(_BaseCaseMatch):
 class CaseMatchOneToOne(_BaseCaseMatch):
     def __init__(
         self,
-        case_control_map: Dict[str, set],
-        metadata: Union[pd.Series, pd.DataFrame] = None,
+        case_control_map: dict[str, set],
+        metadata: pd.Series | pd.DataFrame = None,
     ):
         """Case match object for mapping one case to one control.
 
@@ -214,7 +215,7 @@ class CaseMatchOneToOne(_BaseCaseMatch):
         super().__init__(case_control_map, metadata)
 
     @classmethod
-    def load(cls, path: str) -> "CaseMatchOneToOne":
+    def load(cls, path: str) -> CaseMatchOneToOne:
         cm = util._load(path)
         if not util._check_one_to_one(cm):
             raise exc.NotOneToOneError(cm)
@@ -246,11 +247,11 @@ class CaseMatchOneToOne(_BaseCaseMatch):
 
 
 class CaseMatchCollection:
-    def __init__(self, case_matches: List[CaseMatchOneToOne]):
+    def __init__(self, case_matches: list[CaseMatchOneToOne]):
         """Container for multiple matching sets.
 
         :param case_matches: List of match sets
-        :type case_matches: List[CaseMatchOneToOne]
+        :type case_matches: list[CaseMatchOneToOne]
         """
 
         def is_valid_cm(x):
@@ -273,7 +274,7 @@ class CaseMatchCollection:
         return df
 
     @classmethod
-    def from_dataframe(cls, collection: pd.DataFrame) -> "CaseMatchCollection":
+    def from_dataframe(cls, collection: pd.DataFrame) -> CaseMatchCollection:
         casematches = []
         for col in collection.columns:
             mapping = {k: {v} for k, v in collection[col].to_dict().items()}
@@ -281,7 +282,7 @@ class CaseMatchCollection:
         return cls(casematches)
 
     @classmethod
-    def load(cls, path) -> "CaseMatchCollection":
+    def load(cls, path) -> CaseMatchCollection:
         """Load from TSV."""
         df = pd.read_table(path, sep="\t", index_col=0)
         return cls.from_dataframe(df)

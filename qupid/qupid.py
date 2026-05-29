@@ -1,5 +1,6 @@
+from __future__ import annotations
+
 from functools import partial
-from typing import List, Dict
 from warnings import warn
 
 import pandas as pd
@@ -84,8 +85,8 @@ def match_by_single(
 def match_by_multiple(
     focus: pd.DataFrame,
     background: pd.DataFrame,
-    categories: List[str],
-    tolerance_map: Dict[str, float] = None,
+    categories: list[str],
+    tolerance_map: dict[str, float] = None,
     on_failure: str = "raise",
 ) -> CaseMatchOneToMany:
     """Get matched samples for multiple categories.
@@ -97,11 +98,11 @@ def match_by_multiple(
     :type background: pd.DataFrame
 
     :param categories: Categories to include as matching criteria
-    :type categories: List[str]
+    :type categories: list[str]
 
     :param tolerance_map: Mapping of tolerances for continuous categories.
         Categories not represented default to 1e-08
-    :type tolerance_map: Dict[str, float]
+    :type tolerance_map: dict[str, float]
 
     :param on_failure: Whether to 'raise' or 'ignore' sample for which a match
         cannot be found, defaults to 'raise'
@@ -143,9 +144,9 @@ def match_by_multiple(
 def shuffle(
     focus: pd.DataFrame,
     background: pd.DataFrame,
-    categories: List[str],
+    categories: list[str],
     iterations: int = 10,
-    tolerance_map: Dict[str, float] = None,
+    tolerance_map: dict[str, float] = None,
     on_failure: str = "raise",
     strict: bool = True,
     seed: int = None,
@@ -161,11 +162,11 @@ def shuffle(
     :type background: pd.DataFrame
 
     :param categories: Categories to include as matching criteria
-    :type categories: List[str]
+    :type categories: list[str]
 
     :param tolerance_map: Mapping of tolerances for continuous categories.
         Categories not represented are default to 1e-08
-    :type tolerance_map: Dict[str, float]
+    :type tolerance_map: dict[str, float]
 
     :param on_failure: Whether to 'raise' or 'warn' or 'continue' when no
         matches can be found for a focus sample, defaults to 'raise'

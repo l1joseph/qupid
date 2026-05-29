@@ -16,6 +16,29 @@ You can install the most up-to-date version of Qupid from PyPi using the followi
 pip install qupid
 ```
 
+## Development
+
+Clone the repository and install in editable mode with dev dependencies (requires Python ≥ 3.9):
+
+```bash
+git clone https://github.com/gibsramen/qupid.git
+cd qupid
+pip install -e .[dev]
+```
+
+Run the test suite:
+
+```bash
+make test_all
+```
+
+Run lint and type checks:
+
+```bash
+ruff check qupid/
+mypy qupid/
+```
+
 ## Quickstart
 
 Qupid provides a convenience function, `shuffle`, to easily generate multiple matches based on matching critiera.
