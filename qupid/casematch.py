@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-from functools import reduce
 import json
 from typing import Dict, Set, Union, List, Callable, Iterator
 from warnings import warn
@@ -17,8 +16,11 @@ from . import _casematch_utils as util
 class _BaseCaseMatch(ABC):
     __slots__ = "case_control_map", "metadata"
 
-    def __init__(self, case_control_map: Dict[str, set],
-                 metadata: Union[pd.Series, pd.DataFrame] = None):
+    def __init__(
+        self,
+        case_control_map: Dict[str, set],
+        metadata: Union[pd.Series, pd.DataFrame] = None,
+    ):
         """Base class storing case-control data & metadata.
 
         :param case_control_map: Dict of cases to sets of controls
@@ -41,14 +43,13 @@ class _BaseCaseMatch(ABC):
     def controls(self) -> Set[str]:
         """Get names of all controls."""
         ccm = self.case_control_map
-        return reduce(lambda x, y: x.union(y), ccm.values())
+        return set().union(*ccm.values())
 
     @staticmethod
     def _validate_input(case_control_map: dict) -> bool:
         def is_ctrl_set_valid(ctrls):
-            return (
-                isinstance(ctrls, set) and
-                all(map(lambda x: isinstance(x, str), ctrls))
+            return isinstance(ctrls, set) and all(
+                map(lambda x: isinstance(x, str), ctrls)
             )
 
         cases, ctrls = case_control_map.keys(), case_control_map.values()
@@ -80,8 +81,11 @@ class _BaseCaseMatch(ABC):
 
 
 class CaseMatchOneToMany(_BaseCaseMatch):
-    def __init__(self, case_control_map: Dict[str, set],
-                 metadata: Union[pd.Series, pd.DataFrame] = None):
+    def __init__(
+        self,
+        case_control_map: Dict[str, set],
+        metadata: Union[pd.Series, pd.DataFrame] = None,
+    ):
         """Case match object for mapping one case to multiple controls.
 
         :param case_control_map: Dict of cases to sets of controls
@@ -104,7 +108,7 @@ class CaseMatchOneToMany(_BaseCaseMatch):
         strict: bool = True,
         seed: int = None,
         n_jobs: int = 1,
-        parallel_args: dict = None
+        parallel_args: dict = None,
     ) -> List["CaseMatchOneToOne"]:
         """Create multiple matched pairs of cases to controls.
 
@@ -158,10 +162,7 @@ class CaseMatchOneToMany(_BaseCaseMatch):
         return CaseMatchCollection(cm_list)
 
     def _get_cm_one_to_one(
-        self,
-        G: nx.Graph,
-        strict: bool,
-        seed: int
+        self, G: nx.Graph, strict: bool, seed: int
     ) -> "CaseMatchOneToOne":
         """Get a single matching from a graph as CaseMatchOneToOne.
 
@@ -187,13 +188,19 @@ class CaseMatchOneToMany(_BaseCaseMatch):
             if strict:
                 raise exc.NoMoreControlsError(missing)
             else:
-                warn("Some cases were not matched to a control.", UserWarning)
+                warn(
+                    f"Some cases were not matched to a control: {missing}",
+                    UserWarning,
+                )
         return CaseMatchOneToOne(M, self.metadata)
 
 
 class CaseMatchOneToOne(_BaseCaseMatch):
-    def __init__(self, case_control_map: Dict[str, set],
-                 metadata: Union[pd.Series, pd.DataFrame] = None):
+    def __init__(
+        self,
+        case_control_map: Dict[str, set],
+        metadata: Union[pd.Series, pd.DataFrame] = None,
+    ):
         """Case match object for mapping one case to one control.
 
         :param case_control_map: Dict of cases to sets of controls
@@ -214,45 +221,28 @@ class CaseMatchOneToOne(_BaseCaseMatch):
         return cls(cm)
 
     def to_series(self) -> pd.Series:
-        match_tuples = (
-            map(
-                lambda y: (y[0], list(y[1])[0]),
-                self.case_control_map.items()
-            )
+        match_tuples = map(
+            lambda y: (y[0], list(y[1])[0]), self.case_control_map.items()
         )  # (case, control)
         cases, controls = zip(*match_tuples)
         return pd.Series(controls, index=cases)
 
     def __hash__(self) -> int:
-        return hash(frozenset(
-            (k, list(v)[0]) for k, v in self.case_control_map.items()
-        ))
+        return hash(
+            frozenset((k, list(v)[0]) for k, v in self.case_control_map.items())
+        )
 
     def __lt__(self, other) -> bool:
         """Used for sorting."""
-        this_ccm = self.case_control_map
-        other_ccm = other.case_control_map
-        for (k1, v1), (k2, v2) in zip(this_ccm.items(), other_ccm.items()):
-            v1 = list(v1)[0]
-            v2 = list(v2)[0]
-            if v1 < v2:
-                return True
-            if v1 > v2:
-                return False
-        return False  # Instances are equal
+        this_pairs = sorted((k, list(v)[0]) for k, v in self.case_control_map.items())
+        other_pairs = sorted((k, list(v)[0]) for k, v in other.case_control_map.items())
+        return this_pairs < other_pairs
 
     def __gt__(self, other) -> bool:
         """Used for sorting."""
-        this_ccm = self.case_control_map
-        other_ccm = other.case_control_map
-        for (k1, v1), (k2, v2) in zip(this_ccm.items(), other_ccm.items()):
-            v1 = list(v1)[0]
-            v2 = list(v2)[0]
-            if v1 > v2:
-                return True
-            if v1 < v2:
-                return False
-        return False  # Instances are equal
+        this_pairs = sorted((k, list(v)[0]) for k, v in self.case_control_map.items())
+        other_pairs = sorted((k, list(v)[0]) for k, v in other.case_control_map.items())
+        return this_pairs > other_pairs
 
 
 class CaseMatchCollection:
@@ -262,6 +252,7 @@ class CaseMatchCollection:
         :param case_matches: List of match sets
         :type case_matches: List[CaseMatchOneToOne]
         """
+
         def is_valid_cm(x):
             return isinstance(x, CaseMatchOneToOne)
 

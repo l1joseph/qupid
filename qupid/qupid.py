@@ -34,7 +34,8 @@ def match_by_single(
     :returns: Matched control samples
     :rtype: qupid.CaseMatchOneToMany
     """
-    if on_failure.lower() not in VALID_ON_FAILURE_OPTS:
+    on_failure = on_failure.lower()
+    if on_failure not in VALID_ON_FAILURE_OPTS:
         raise ValueError(
             "Invalid argument for 'on_failure', must be one of "
             f"{VALID_ON_FAILURE_OPTS}"
@@ -63,7 +64,7 @@ def match_by_single(
         matcher = partial(util._match_continuous, tolerance=tolerance)
 
     matches = dict()
-    for f_idx, f_val in focus.iteritems():
+    for f_idx, f_val in focus.items():
         hits = matcher(f_val, background.values)
         if hits.any():
             matches[f_idx] = set(background.index[hits])
@@ -85,7 +86,7 @@ def match_by_multiple(
     background: pd.DataFrame,
     categories: List[str],
     tolerance_map: Dict[str, float] = None,
-    on_failure: str = "raise"
+    on_failure: str = "raise",
 ) -> CaseMatchOneToMany:
     """Get matched samples for multiple categories.
 
@@ -113,8 +114,7 @@ def match_by_multiple(
         raise exc.MissingCategoriesError(categories, "focus", focus)
 
     if not util._are_categories_subset(categories, background):
-        raise exc.MissingCategoriesError(categories, "background",
-                                         background)
+        raise exc.MissingCategoriesError(categories, "background", background)
 
     tolerance_map = tolerance_map or dict()
 
@@ -123,8 +123,9 @@ def match_by_multiple(
 
     for cat in categories:
         tol = tolerance_map.get(cat)
-        observed = match_by_single(focus[cat], background[cat],
-                                   tol, on_failure).case_control_map
+        observed = match_by_single(
+            focus[cat], background[cat], tol, on_failure
+        ).case_control_map
         for fidx, fhits in observed.items():
             # Reduce the matches with successive categories
             matches[fidx] = matches[fidx] & fhits
@@ -146,7 +147,7 @@ def shuffle(
     strict: bool = True,
     seed: int = None,
     n_jobs: int = 1,
-    parallel_args: dict = None
+    parallel_args: dict = None,
 ) -> pd.DataFrame:
     """Create multiple case-control matches on several matching criteria.
 
@@ -192,19 +193,21 @@ def shuffle(
         a discrete CaseMatchOneToOne instance
     :rtype: pd.DataFrame
     """
+    on_failure = on_failure.lower()
     if on_failure not in VALID_ON_FAILURE_OPTS:
         raise ValueError(
             "Invalid argument for 'on_failure', must be one of "
             f"{VALID_ON_FAILURE_OPTS}"
         )
 
-    cm_one_to_many = match_by_multiple(focus, background, categories,
-                                       tolerance_map, on_failure)
+    cm_one_to_many = match_by_multiple(
+        focus, background, categories, tolerance_map, on_failure
+    )
     res = cm_one_to_many.create_matched_pairs(
         iterations=iterations,
         strict=strict,
         seed=seed,
         n_jobs=n_jobs,
-        parallel_args=parallel_args
+        parallel_args=parallel_args,
     ).to_dataframe()
     return res

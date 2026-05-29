@@ -14,7 +14,7 @@ def bulk_permanova(
     distance_matrix: DistanceMatrix,
     permutations: int = 999,
     n_jobs: int = 1,
-    parallel_args: dict = None
+    parallel_args: dict = None,
 ) -> pd.DataFrame:
     """Evaluate PERMANOVA on multiple case-control mappings.
 
@@ -47,14 +47,17 @@ def bulk_permanova(
         for cm in casematches
     )
     pnova_results = pd.DataFrame.from_records(pnova_results)
-    pnova_results.columns = [
-        x.replace(" ", "_") for x in pnova_results.columns
+    pnova_results.columns = [x.replace(" ", "_") for x in pnova_results.columns]
+    pnova_results = pnova_results.sort_values(by="test_statistic", ascending=False)
+    col_order = [
+        "method_name",
+        "test_statistic_name",
+        "test_statistic",
+        "p-value",
+        "sample_size",
+        "number_of_groups",
+        "number_of_permutations",
     ]
-    pnova_results = pnova_results.sort_values(by="test_statistic",
-                                              ascending=False)
-    col_order = ["method_name", "test_statistic_name", "test_statistic",
-                 "p-value", "sample_size", "number_of_groups",
-                 "number_of_permutations"]
     return pnova_results[col_order]
 
 
@@ -63,7 +66,7 @@ def bulk_univariate_test(
     values: pd.Series,
     test: str = "t",
     n_jobs: int = 1,
-    parallel_args: dict = None
+    parallel_args: dict = None,
 ):
     """Evaluate univariate test on multiple case-control mappings.
 
@@ -98,32 +101,33 @@ def bulk_univariate_test(
         method_str = "mann-whitney"
         stat_str = "U"
     else:
-        raise ValueError(
-            "test must be either 't' (t-test) or 'mw' (Mann-Whitney)"
-        )
+        raise ValueError("test must be either 't' (t-test) or 'mw' (Mann-Whitney)")
 
     if parallel_args is None:
         parallel_args = dict()
 
     results = Parallel(n_jobs=n_jobs, **parallel_args)(
-        delayed(_single_univariate_test)(cm, values, test_fn)
-        for cm in casematches
+        delayed(_single_univariate_test)(cm, values, test_fn) for cm in casematches
     )
     results = pd.DataFrame.from_records(results)
     results["method_name"] = method_str
     results["test_statistic_name"] = stat_str
-    results["sample_size"] = len(casematches[0].cases) * 2
+    results["sample_size"] = [len(cm.cases) * 2 for cm in casematches]
     results["number_of_groups"] = 2
     results = results.sort_values(by="test_statistic", ascending=False)
-    col_order = ["method_name", "test_statistic_name", "test_statistic",
-                 "p-value", "sample_size", "number_of_groups"]
+    col_order = [
+        "method_name",
+        "test_statistic_name",
+        "test_statistic",
+        "p-value",
+        "sample_size",
+        "number_of_groups",
+    ]
     return results[col_order]
 
 
 def _single_permanova(
-    casematch: CaseMatchOneToOne,
-    distance_matrix: DistanceMatrix,
-    permutations: int
+    casematch: CaseMatchOneToOne, distance_matrix: DistanceMatrix, permutations: int
 ) -> pd.Series:
     """Evaluate PERMANOVA on single case-control mapping.
 
@@ -145,9 +149,7 @@ def _single_permanova(
 
 
 def _single_univariate_test(
-    casematch: CaseMatchOneToOne,
-    values: pd.Series,
-    test_fn: Callable
+    casematch: CaseMatchOneToOne, values: pd.Series, test_fn: Callable
 ) -> pd.Series:
     """Evaluate univariate test on single case-control mapping.
 
