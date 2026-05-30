@@ -146,27 +146,44 @@ class CaseMatchOneToMany(_BaseCaseMatch):
             raise ValueError(f"iterations must be >= 1, got {iterations}")
 
         if parallel_args is None:
-            parallel_args = dict()
+            parallel_args = {}
 
         G = nx.Graph(self.case_control_map)
 
         # Need to account for parallelization with random seed
         # https://numpy.org/doc/stable/reference/random/parallel.html
-        ss = SeedSequence(seed)
-        child_states = ss.spawn(iterations)
+        child_states = SeedSequence(seed).spawn(iterations)
 
         all_matches = Parallel(n_jobs=n_jobs, **parallel_args)(
             delayed(self._get_cm_one_to_one)(G, strict, child_state)
             for child_state in child_states
         )
 
-        # Need to sort for reproducibility since calling set is random
-        # We call set to remove duplicates so that call is necessary
-        cm_list = sorted(list(set(all_matches)))
+        # Sort after deduplication for reproducibility (set ordering is non-deterministic).
+        cm_list = sorted(set(all_matches))
         return CaseMatchCollection(cm_list)
 
+    def _hk_round(self, G: nx.Graph, seed, strict: bool) -> dict[str, str]:
+        """Run one Hopcroft-Karp round and check coverage.
+
+        :returns: case → control mapping for matched cases only
+        :rtype: dict[str, str]
+        """
+        M = hopcroft_karp_matching(G, top_nodes=self.cases, seed=seed)
+        if len(M) == len(self.cases):
+            return M
+
+        missing = set(self.cases).difference(M.keys())
+        if strict:
+            raise exc.NoMoreControlsError(missing)
+        warn(
+            f"Some cases were not matched to a control: {missing}",
+            UserWarning,
+        )
+        return M
+
     def _get_cm_one_to_one(
-        self, G: nx.Graph, strict: bool, seed: int
+        self, G: nx.Graph, strict: bool, seed
     ) -> "CaseMatchOneToOne":
         """Get a single matching from a graph as CaseMatchOneToOne.
 
@@ -178,25 +195,103 @@ class CaseMatchOneToMany(_BaseCaseMatch):
             warning.
         :type strict: bool
 
-        :param seed: Random seed to use for reproducibility. By default does
-            not provide a random seed.
+        :param seed: Random seed for reproducibility.
         :type seed: int
 
         :returns: Set of matches from cases to controls
         :rtype: qupid.CaseMatchOneToOne
         """
-        M = hopcroft_karp_matching(G, top_nodes=self.cases, seed=seed)
-        M = {k: {v} for k, v in M.items()}
-        if len(M) != len(self.cases):
-            missing = set(self.cases).difference(M.keys())
-            if strict:
-                raise exc.NoMoreControlsError(missing)
-            else:
-                warn(
-                    f"Some cases were not matched to a control: {missing}",
-                    UserWarning,
-                )
-        return CaseMatchOneToOne(M, self.metadata)
+        M = self._hk_round(G, seed, strict)
+        return CaseMatchOneToOne({k: {v} for k, v in M.items()}, self.metadata)
+
+    def create_matched_groups(
+        self,
+        n_controls: int,
+        iterations: int = 10,
+        strict: bool = True,
+        seed: int = None,
+        n_jobs: int = 1,
+        parallel_args: dict = None,
+    ) -> list["CaseMatchOneToMany"]:
+        """Create multiple k:1 matched groups (one case → N distinct controls).
+
+        Each returned :class:`CaseMatchOneToMany` assigns exactly *n_controls*
+        distinct controls to every case within a single iteration.  Controls
+        are never double-assigned within the same iteration — each
+        Hopcroft-Karp round removes chosen controls from the candidate pool
+        before the next round.
+
+        When ``strict=False`` and the pool is exhausted mid-way, a
+        ``UserWarning`` is emitted and affected cases receive fewer than
+        *n_controls* controls in that iteration (variable-size control sets).
+
+        :param n_controls: Number of distinct controls to assign per case
+        :type n_controls: int
+
+        :param iterations: Number of independent matchings to generate,
+            defaults to 10
+        :type iterations: int
+
+        :param strict: If True, raise when any case cannot receive
+            *n_controls* controls.  If False, emit a warning and return the
+            partial matching.  Defaults to True.
+        :type strict: bool
+
+        :param seed: Random seed for reproducibility, defaults to None
+        :type seed: int
+
+        :param n_jobs: Number of parallel jobs, defaults to 1 (single CPU)
+        :type n_jobs: int
+
+        :param parallel_args: Extra kwargs forwarded to
+            :class:`joblib.Parallel`, defaults to ``{}``
+        :type parallel_args: dict
+
+        :returns: List of unique k:1 matchings (deduplicated across iterations)
+        :rtype: list[CaseMatchOneToMany]
+        """
+        if n_controls < 1:
+            raise ValueError(f"n_controls must be >= 1, got {n_controls}")
+        if iterations < 1:
+            raise ValueError(f"iterations must be >= 1, got {iterations}")
+        if parallel_args is None:
+            parallel_args = {}
+
+        child_states = SeedSequence(seed).spawn(iterations)
+
+        results = Parallel(n_jobs=n_jobs, **parallel_args)(
+            delayed(self._get_cm_one_to_n)(n_controls, strict, child_state)
+            for child_state in child_states
+        )
+
+        # Deduplicate by the (case, frozenset(controls)) signature.
+        seen: set[frozenset] = set()
+        unique: list[CaseMatchOneToMany] = []
+        for cm in results:
+            signature = frozenset(
+                (case, frozenset(ctrls)) for case, ctrls in cm.case_control_map.items()
+            )
+            if signature not in seen:
+                seen.add(signature)
+                unique.append(cm)
+        return unique
+
+    def _get_cm_one_to_n(
+        self, n_controls: int, strict: bool, seed
+    ) -> "CaseMatchOneToMany":
+        """Build one k:1 matching by running Hopcroft-Karp ``n_controls`` times.
+
+        Each round removes its assigned controls from the working graph so the
+        next round cannot reuse them.
+        """
+        G = nx.Graph(self.case_control_map)
+        merged: dict[str, set] = {case: set() for case in self.cases}
+        for round_seed in seed.spawn(n_controls):
+            M = self._hk_round(G, round_seed, strict)
+            for case, ctrl in M.items():
+                merged[case].add(ctrl)
+                G.remove_node(ctrl)
+        return CaseMatchOneToMany(merged, self.metadata)
 
 
 @total_ordering
@@ -228,28 +323,25 @@ class CaseMatchOneToOne(_BaseCaseMatch):
     def to_series(self) -> pd.Series:
         if not self.case_control_map:
             return pd.Series(dtype=object)
-        match_tuples = map(
-            lambda y: (y[0], list(y[1])[0]), self.case_control_map.items()
-        )  # (case, control)
-        cases, controls = zip(*match_tuples)
+        # Each value set has exactly one control (1:1 invariant enforced at __init__).
+        pairs = [
+            (case, next(iter(ctrls))) for case, ctrls in self.case_control_map.items()
+        ]
+        cases, controls = zip(*pairs)
         return pd.Series(controls, index=cases)
 
-    def __hash__(self) -> int:
-        return hash(
-            frozenset((k, list(v)[0]) for k, v in self.case_control_map.items())
+    def _pairs(self) -> list[tuple[str, str]]:
+        """Return sorted (case, control) pairs for hashing and ordering."""
+        return sorted(
+            (case, next(iter(ctrls))) for case, ctrls in self.case_control_map.items()
         )
 
-    def __lt__(self, other) -> bool:
-        """Used for sorting."""
-        this_pairs = sorted((k, list(v)[0]) for k, v in self.case_control_map.items())
-        other_pairs = sorted((k, list(v)[0]) for k, v in other.case_control_map.items())
-        return this_pairs < other_pairs
+    def __hash__(self) -> int:
+        return hash(frozenset(self._pairs()))
 
-    def __gt__(self, other) -> bool:
-        """Used for sorting."""
-        this_pairs = sorted((k, list(v)[0]) for k, v in self.case_control_map.items())
-        other_pairs = sorted((k, list(v)[0]) for k, v in other.case_control_map.items())
-        return this_pairs > other_pairs
+    def __lt__(self, other) -> bool:
+        """Used for sorting; @total_ordering fills in the remaining comparisons."""
+        return self._pairs() < other._pairs()
 
 
 class CaseMatchCollection:

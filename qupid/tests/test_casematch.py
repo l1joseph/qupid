@@ -631,3 +631,54 @@ class TestCodeReviewFindings:
             w for w in warn_info if "No matches found for S1A" in str(w.message)
         ]
         assert len(no_match_warns) == 1
+
+
+class TestCreateMatchedGroups:
+    """D3 — fixed k:1 (1:N) matching via create_matched_groups."""
+
+    def _fully_connected(self, n_cases: int, n_ctrls: int) -> mm.CaseMatchOneToMany:
+        cases = [f"C{i}" for i in range(n_cases)]
+        ctrls = {f"T{j}" for j in range(n_ctrls)}
+        return mm.CaseMatchOneToMany({case: ctrls for case in cases})
+
+    def test_basic_size(self):
+        cm = self._fully_connected(4, 12)
+        groups = cm.create_matched_groups(n_controls=3, seed=42)
+        assert len(groups) >= 1
+        for g in groups:
+            for case_ctrls in g.case_control_map.values():
+                assert len(case_ctrls) == 3
+
+    def test_no_shared_controls_across_cases(self):
+        cm = self._fully_connected(4, 12)
+        groups = cm.create_matched_groups(n_controls=3, seed=0)
+        for g in groups:
+            assigned = [ctrl for ctrls in g.case_control_map.values() for ctrl in ctrls]
+            assert len(assigned) == len(set(assigned))
+
+    def test_strict_failure(self):
+        # 2 controls total, n_controls=3 exhausts pool in round 3
+        data = {"C0": {"T0", "T1"}, "C1": {"T0", "T1"}}
+        cm = mm.CaseMatchOneToMany(data)
+        with pytest.raises(mexc.NoMoreControlsError):
+            cm.create_matched_groups(n_controls=3)
+
+    def test_strict_false_warns(self):
+        data = {"C0": {"T0", "T1"}, "C1": {"T0", "T1"}}
+        cm = mm.CaseMatchOneToMany(data)
+        with pytest.warns(UserWarning):
+            result = cm.create_matched_groups(n_controls=3, strict=False)
+        assert len(result) >= 1
+
+    def test_invalid_n_controls(self):
+        cm = mm.CaseMatchOneToMany({"C0": {"T0"}})
+        with pytest.raises(ValueError, match="n_controls must be >= 1"):
+            cm.create_matched_groups(n_controls=0)
+
+    def test_reproducible(self):
+        cm = self._fully_connected(3, 12)
+        g1 = cm.create_matched_groups(n_controls=2, seed=42, iterations=5)
+        g2 = cm.create_matched_groups(n_controls=2, seed=42, iterations=5)
+        assert len(g1) == len(g2)
+        for a, b in zip(g1, g2):
+            assert a.case_control_map == b.case_control_map

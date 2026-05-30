@@ -84,3 +84,105 @@ def test_univariate_sample_size_per_record():
 
     res = stats.bulk_univariate_test(collection, values, test="t")
     assert set(res["sample_size"].values) == {6, 4}  # 3*2 and 2*2
+
+
+# D1 — paired statistical tests
+@pytest.mark.parametrize(
+    "test,expected_method,expected_stat",
+    [
+        ("paired-t", "paired-t", "t"),
+        ("ttest-rel", "paired-t", "t"),
+        ("wilcoxon", "wilcoxon", "W"),
+        ("wilcoxon-sr", "wilcoxon", "W"),
+    ],
+)
+def test_paired_test_runs(
+    example_collection, example_vals, test, expected_method, expected_stat
+):
+    res = stats.bulk_univariate_test(example_collection, example_vals, test=test)
+    assert res.shape[0] == 30
+    exp_cols = [
+        "method_name",
+        "test_statistic_name",
+        "test_statistic",
+        "p-value",
+        "sample_size",
+        "number_of_groups",
+    ]
+    assert (res.columns == exp_cols).all()
+    assert (res["method_name"] == expected_method).all()
+    assert (res["test_statistic_name"] == expected_stat).all()
+
+
+def test_invalid_test_name(example_collection, example_vals):
+    with pytest.raises(ValueError, match="paired-t"):
+        stats.bulk_univariate_test(example_collection, example_vals, test="nope")
+
+
+# D2 — covariate-balance diagnostics
+def test_smd_columns():
+    focus = pd.DataFrame({"age": [10.0, 20.0, 30.0]}, index=["c0", "c1", "c2"])
+    background = pd.DataFrame(
+        {"age": [10.0, 20.0, 30.0, 40.0, 50.0, 60.0]},
+        index=["b0", "b1", "b2", "b3", "b4", "b5"],
+    )
+    casematch = mm.CaseMatchOneToOne({"c0": {"b0"}, "c1": {"b1"}, "c2": {"b2"}})
+    result = stats.compute_covariate_balance(focus, background, casematch, ["age"])
+    assert list(result.columns) == ["covariate", "smd_pre", "smd_post"]
+
+
+def test_smd_zero_for_identical():
+    vals = [1.0, 2.0, 3.0]
+    focus = pd.DataFrame({"age": vals}, index=["c0", "c1", "c2"])
+    background = pd.DataFrame({"age": vals}, index=["b0", "b1", "b2"])
+    casematch = mm.CaseMatchOneToOne({"c0": {"b0"}, "c1": {"b1"}, "c2": {"b2"}})
+    result = stats.compute_covariate_balance(focus, background, casematch, ["age"])
+    age_row = result.loc[result["covariate"] == "age"].iloc[0]
+    assert age_row["smd_pre"] == pytest.approx(0.0)
+
+
+def test_smd_skips_nonnumeric():
+    focus = pd.DataFrame({"grp": ["A", "B", "C"]}, index=["c0", "c1", "c2"])
+    background = pd.DataFrame({"grp": ["A", "B", "C"]}, index=["b0", "b1", "b2"])
+    casematch = mm.CaseMatchOneToOne({"c0": {"b0"}, "c1": {"b1"}, "c2": {"b2"}})
+    with pytest.warns(UserWarning):
+        result = stats.compute_covariate_balance(focus, background, casematch, ["grp"])
+    assert len(result) == 0
+
+
+def test_smd_post_better_than_pre():
+    focus = pd.DataFrame({"age": [10.0, 10.0, 10.0]}, index=["c0", "c1", "c2"])
+    background = pd.DataFrame(
+        {"age": [10.0, 10.0, 10.0, 50.0, 50.0, 50.0]},
+        index=["b0", "b1", "b2", "b3", "b4", "b5"],
+    )
+    # Pairs each focus (age=10) with a background at age=10, improving balance
+    casematch = mm.CaseMatchOneToOne({"c0": {"b0"}, "c1": {"b1"}, "c2": {"b2"}})
+    result = stats.compute_covariate_balance(focus, background, casematch, ["age"])
+    age_row = result.loc[result["covariate"] == "age"].iloc[0]
+    assert abs(age_row["smd_post"]) < abs(age_row["smd_pre"])
+
+
+# D4 — Benjamini-Hochberg FDR correction
+def test_correct_adds_q_column(example_collection, example_vals):
+    res_q = stats.bulk_univariate_test(example_collection, example_vals, correct=True)
+    assert "q_value" in res_q.columns
+    res_no_q = stats.bulk_univariate_test(example_collection, example_vals)
+    assert "q_value" not in res_no_q.columns
+
+
+def test_bh_fdr_monotone():
+    p = np.array([0.01, 0.03, 0.05, 0.10, 0.50])
+    q = stats._bh_fdr(p)
+    assert np.all(np.diff(q) >= -1e-12)
+
+
+def test_bh_fdr_caps_at_one():
+    p = np.array([0.5, 0.8, 0.9, 0.95, 1.0])
+    q = stats._bh_fdr(p)
+    assert np.all(q <= 1.0)
+
+
+def test_correct_in_permanova(example_collection, example_dm):
+    res_q = stats.bulk_permanova(example_collection, example_dm, correct=True)
+    assert "q_value" in res_q.columns
