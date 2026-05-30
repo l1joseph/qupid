@@ -331,13 +331,20 @@ class CaseMatchOneToOne(_BaseCaseMatch):
         return pd.Series(controls, index=cases)
 
     def _pairs(self) -> list[tuple[str, str]]:
-        """Return sorted (case, control) pairs for hashing and ordering."""
+        """Return sorted (case, control) pairs for ordering."""
         return sorted(
             (case, next(iter(ctrls))) for case, ctrls in self.case_control_map.items()
         )
 
     def __hash__(self) -> int:
-        return hash(frozenset(self._pairs()))
+        # frozenset is order-independent so sorting before building it is wasted
+        # work; iterate the map directly.
+        return hash(
+            frozenset(
+                (case, next(iter(ctrls)))
+                for case, ctrls in self.case_control_map.items()
+            )
+        )
 
     def __lt__(self, other) -> bool:
         """Used for sorting; @total_ordering fills in the remaining comparisons."""
