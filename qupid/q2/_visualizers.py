@@ -39,7 +39,7 @@ def assess_matches_multivariate(
     case_match_collection: pd.DataFrame,
     distance_matrix: DistanceMatrix,
     permutations: int = 999,
-    n_jobs: int = 1,
+    n_jobs: int = -1,
     correct: bool = False,
 ) -> None:
     fig_loc = os.path.join(output_dir, "permanova_pvalues.svg")
@@ -81,7 +81,7 @@ def assess_matches_univariate(
     case_match_collection: pd.DataFrame,
     data: pd.Series,
     test: str = "t",
-    n_jobs: int = 1,
+    n_jobs: int = -1,
     correct: bool = False,
 ) -> None:
     fig_loc = os.path.join(output_dir, "univariate_pvalues.svg")

@@ -168,7 +168,7 @@ def match_groups(
     show_default=True,
 )
 @click.option("--correct", is_flag=True, default=False, help=DESC.CORRECT)
-@click.option("-j", "--jobs", type=int, help=DESC.JOBS, show_default=True)
+@click.option("-j", "--jobs", default=-1, type=int, help=DESC.JOBS, show_default=True)
 @click.option("-o", "--output", type=click.Path(), required=True, help=DESC.OUTPUT)
 def assess_univariate(matches, values, test, correct, jobs, output):
     """Run a univariate test across all case-control matchings."""
@@ -176,7 +176,7 @@ def assess_univariate(matches, values, test, correct, jobs, output):
     vals_df = pd.read_table(values, sep="\t", index_col=0)
     vals = vals_df.iloc[:, 0]
     res = stats.bulk_univariate_test(
-        coll, vals, test=test, correct=correct, n_jobs=jobs or 1
+        coll, vals, test=test, correct=correct, n_jobs=jobs
     )
     res.to_csv(output, sep="\t", index=True)
     print(f"Results written to {output}")
@@ -200,14 +200,14 @@ def assess_univariate(matches, values, test, correct, jobs, output):
     show_default=True,
 )
 @click.option("--correct", is_flag=True, default=False, help=DESC.CORRECT)
-@click.option("-j", "--jobs", type=int, help=DESC.JOBS, show_default=True)
+@click.option("-j", "--jobs", default=-1, type=int, help=DESC.JOBS, show_default=True)
 @click.option("-o", "--output", type=click.Path(), required=True, help=DESC.OUTPUT)
 def assess_multivariate(matches, distance_matrix, permutations, correct, jobs, output):
     """Run PERMANOVA across all case-control matchings."""
     coll = CaseMatchCollection.load(matches)
     dm = DistanceMatrix.read(distance_matrix)
     res = stats.bulk_permanova(
-        coll, dm, permutations=permutations, correct=correct, n_jobs=jobs or 1
+        coll, dm, permutations=permutations, correct=correct, n_jobs=jobs
     )
     res.to_csv(output, sep="\t", index=True)
     print(f"Results written to {output}")
