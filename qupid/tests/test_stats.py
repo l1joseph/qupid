@@ -186,3 +186,50 @@ def test_bh_fdr_caps_at_one():
 def test_correct_in_permanova(example_collection, example_dm):
     res_q = stats.bulk_permanova(example_collection, example_dm, correct=True)
     assert "q_value" in res_q.columns
+
+
+# Vectorized PERMANOVA
+def test_fast_permanova_fields():
+    exp_fields = {
+        "method name",
+        "test statistic name",
+        "sample size",
+        "number of groups",
+        "test statistic",
+        "p-value",
+        "number of permutations",
+    }
+    cm = mm.CaseMatchOneToOne({"c0": {"t0"}, "c1": {"t1"}, "c2": {"t2"}})
+    all_ids = ["c0", "c1", "c2", "t0", "t1", "t2"]
+    rng = np.random.default_rng(0)
+    dm_arr = np.zeros((6, 6))
+    for i in range(6):
+        for j in range(i + 1, 6):
+            v = rng.random()
+            dm_arr[i, j] = dm_arr[j, i] = v
+    dm = DistanceMatrix(dm_arr, ids=all_ids)
+    result = stats._single_permanova(cm, dm, permutations=99)
+    assert set(result.index) == exp_fields
+
+
+def test_fast_permanova_pseudo_f_matches_skbio():
+    from skbio.stats.distance import permanova as skbio_permanova
+
+    rng = np.random.default_rng(42)
+    n = 10  # 5 cases + 5 controls
+    ids = [f"s{i}" for i in range(n)]
+    raw = rng.random((n, n))
+    dm_arr = np.triu(raw, 1) + np.triu(raw, 1).T
+    dm = DistanceMatrix(dm_arr, ids=ids)
+
+    is_case = np.array([True] * 5 + [False] * 5)
+    grouping = pd.Series(["case"] * 5 + ["control"] * 5, index=ids)
+
+    # pseudo-F is deterministic — both implementations must agree exactly
+    fast_f, _ = stats._fast_permanova(dm_arr, is_case, permutations=0, rng=rng)
+    skbio_res = skbio_permanova(dm, grouping, permutations=0)
+    assert abs(fast_f - skbio_res["test statistic"]) < 1e-10
+
+    # p-values are stochastic (no shared seed with skbio) — just check range
+    _, fast_p = stats._fast_permanova(dm_arr, is_case, permutations=99, rng=rng)
+    assert 0.0 <= fast_p <= 1.0
