@@ -12,6 +12,9 @@ from skbio import DistanceMatrix
 from qupid.casematch import CaseMatchCollection, CaseMatchOneToMany, CaseMatchOneToOne
 
 # Registry of supported univariate tests.
+# Dict over if/elif so the CLI can enumerate valid aliases dynamically
+# (click.Choice uses _TEST_REGISTRY.keys()) and paired tests can be added
+# without touching the dispatch logic.
 # Each entry: alias -> (scipy function, display method name, statistic name, paired?).
 _TEST_REGISTRY: dict[str, tuple[Callable, str, str, bool]] = {
     "t": (ss.ttest_ind, "t-test", "t", False),
@@ -65,7 +68,7 @@ def bulk_permanova(
     :rtype: pd.DataFrame
     """
     if parallel_args is None:
-        parallel_args = {}
+        parallel_args = dict()
 
     pnova_results = Parallel(n_jobs=n_jobs, **parallel_args)(
         delayed(_single_permanova)(cm, distance_matrix, permutations)
@@ -143,7 +146,7 @@ def bulk_univariate_test(
     test_fn, method_str, stat_str, paired = _TEST_REGISTRY[test_lower]
 
     if parallel_args is None:
-        parallel_args = {}
+        parallel_args = dict()
 
     results = Parallel(n_jobs=n_jobs, **parallel_args)(
         delayed(_single_univariate_test)(cm, values, test_fn, paired)
